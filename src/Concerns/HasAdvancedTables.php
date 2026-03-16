@@ -4,40 +4,55 @@ namespace Ableaura\FilamentAdvancedTables\Concerns;
 
 use Ableaura\FilamentAdvancedTables\Models\UserView;
 use Ableaura\FilamentAdvancedTables\Support\PresetView;
-use Filament\Tables\Table;
+use Ableaura\FilamentAdvancedTables\Support\QuickFilter;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
+/**
+ * Add this trait to any Filament ListRecords page to enable:
+ *  - Preset Views (developer-defined, shown in favorites bar)
+ *  - User Views (user-saved filter/sort/column state)
+ *  - Quick Filters (one-click filter shortcuts)
+ *  - Quick Save / View Manager
+ *  - Multi-Sort  (via AppliesMultiSort)
+ *  - Advanced Search (via AppliesAdvancedSearch)
+ */
 trait HasAdvancedTables
 {
-    // ─── State ───────────────────────────────────────────────────────────────────
+    // ─── Livewire public state ────────────────────────────────────────────────────
 
     public ?int $activeUserViewId = null;
     public ?string $activePresetViewKey = null;
-
-    /** @var array<string, mixed> */
-    public array $advancedFilterValues = [];
-
-    /** @var array<string> */
-    public array $multiSortColumns = [];
-
-    public string $advancedSearchQuery = '';
-    public ?string $advancedSearchColumn = null;
-    public string $advancedSearchOperator = 'contains';
-
     public bool $showFavoritesBar = true;
 
+    // Quick Save modal
+    public bool $showSaveViewModal = false;
+    public string $saveViewName = '';
+    public bool $saveViewFavorite = false;
+    public bool $saveViewPublic = false;
+
     // ─── Lifecycle ────────────────────────────────────────────────────────────────
+
+    public function bootHasAdvancedTables(): void
+    {
+        // Apply default view on first load
+    }
 
     public function mountHasAdvancedTables(): void
     {
         $this->showFavoritesBar = true;
+
+        // Apply user's default view if one exists
+        $default = $this->getManagedDefaultView();
+        if ($default) {
+            $this->doApplyUserView($default);
+        }
     }
 
     // ─── Preset Views ─────────────────────────────────────────────────────────────
 
     /**
-     * Override this method in your resource to define preset views.
+     * Override in your ListRecords page to define preset views.
      *
      * @return array<PresetView>
      */
@@ -51,34 +66,49 @@ trait HasAdvancedTables
         return collect($this->getPresetViews());
     }
 
+    /**
+     * Called when user clicks a preset view pill.
+     * Uses Filament 3's public table API.
+     */
     public function applyPresetView(string $key): void
     {
-        $preset = collect($this->getPresetViews())->firstWhere('key', $key);
+        $preset = collect($this->getPresetViews())->first(fn (PresetView $p) => $p->key === $key);
 
         if (! $preset) {
             return;
         }
 
         $this->activePresetViewKey = $key;
-        $this->activeUserViewId = null;
+        $this->activeUserViewId    = null;
 
-        if ($preset->filters) {
-            $this->tableFilters = $preset->filters;
+        // Apply filters using Filament 3 API
+        if (! empty($preset->filters)) {
+            $this->resetTableFiltersForm();
+            foreach ($preset->filters as $filterName => $filterData) {
+                $this->setTableFilterState($filterName, $filterData);
+            }
         }
 
+        // Apply sort
         if ($preset->sortColumn) {
-            $this->tableSortColumn = $preset->sortColumn;
-            $this->tableSortDirection = $preset->sortDirection ?? 'asc';
+            $this->sortTable($preset->sortColumn, $preset->sortDirection ?? 'asc');
         }
 
-        if ($preset->toggledColumns) {
-            $this->toggledTableColumns = $preset->toggledColumns;
+        // Apply toggled columns
+        if (! empty($preset->toggledColumns)) {
+            foreach ($preset->toggledColumns as $column) {
+                $this->toggleTableColumn($column);
+            }
         }
 
-        if ($preset->columnOrder) {
-            // stored for later use
-        }
+        $this->resetPage();
+    }
 
+    public function clearActiveView(): void
+    {
+        $this->activePresetViewKey = null;
+        $this->activeUserViewId    = null;
+        $this->resetTableFiltersForm();
         $this->resetPage();
     }
 
@@ -108,85 +138,91 @@ trait HasAdvancedTables
             return;
         }
 
-        $this->activeUserViewId = $viewId;
+        $this->doApplyUserView($view);
+    }
+
+    private function doApplyUserView(UserView $view): void
+    {
+        $this->activeUserViewId    = $view->id;
         $this->activePresetViewKey = null;
 
         $state = $view->state ?? [];
 
+        // Apply filters
         if (! empty($state['filters'])) {
-            $this->tableFilters = $state['filters'];
+            $this->resetTableFiltersForm();
+            foreach ($state['filters'] as $filterName => $filterData) {
+                $this->setTableFilterState($filterName, $filterData);
+            }
         }
 
+        // Apply sort
         if (! empty($state['sort_column'])) {
-            $this->tableSortColumn = $state['sort_column'];
-            $this->tableSortDirection = $state['sort_direction'] ?? 'asc';
+            $this->sortTable($state['sort_column'], $state['sort_direction'] ?? 'asc');
         }
 
-        if (! empty($state['toggled_columns'])) {
-            $this->toggledTableColumns = $state['toggled_columns'];
-        }
-
+        // Apply search
         if (! empty($state['search'])) {
             $this->tableSearch = $state['search'];
+        }
+
+        // Apply toggled columns
+        if (! empty($state['toggled_columns'])) {
+            foreach ($state['toggled_columns'] as $column) {
+                $this->toggleTableColumn($column);
+            }
         }
 
         $this->resetPage();
     }
 
-    public function saveCurrentView(string $name, bool $isPublic = false, bool $isFavorite = false, ?string $icon = null, ?string $color = null): void
-    {
-        if (! Auth::check()) {
-            return;
-        }
+    // ─── Quick Save ───────────────────────────────────────────────────────────────
 
-        $state = [
-            'filters'         => $this->tableFilters ?? [],
-            'sort_column'     => $this->tableSortColumn ?? null,
-            'sort_direction'  => $this->tableSortDirection ?? null,
-            'toggled_columns' => $this->toggledTableColumns ?? [],
-            'search'          => $this->tableSearch ?? '',
-        ];
-
-        $view = UserView::create([
-            'user_id'           => Auth::id(),
-            'resource'          => static::class,
-            'name'              => $name,
-            'state'             => $state,
-            'is_public'         => $isPublic,
-            'is_favorite'       => $isFavorite,
-            'is_approved'       => ! config('filament-advanced-tables.approval_required', false),
-            'icon'              => $icon,
-            'color'             => $color,
-        ]);
-
-        $this->activeUserViewId = $view->id;
-
-        $this->notify('success', __('filament-advanced-tables::advanced-tables.view_saved'));
-    }
-
-    public function quickSaveView(): void
+    /**
+     * If a user view is active, update it in-place.
+     * Otherwise open the save modal.
+     */
+    public function quickSaveCurrentView(): void
     {
         if ($this->activeUserViewId) {
-            // Update existing view
             $view = UserView::find($this->activeUserViewId);
-
             if ($view && $this->canEditView($view)) {
-                $view->update([
-                    'state' => [
-                        'filters'         => $this->tableFilters ?? [],
-                        'sort_column'     => $this->tableSortColumn ?? null,
-                        'sort_direction'  => $this->tableSortDirection ?? null,
-                        'toggled_columns' => $this->toggledTableColumns ?? [],
-                        'search'          => $this->tableSearch ?? '',
-                    ],
-                ]);
-
-                $this->notify('success', __('filament-advanced-tables::advanced-tables.view_updated'));
+                $view->update(['state' => $this->captureTableState()]);
+                $this->sendNotification('success', __('filament-advanced-tables::advanced-tables.view_updated'));
+                return;
             }
-        } else {
-            // Prompt for name via modal — handled in the Livewire component
-            $this->dispatch('open-modal', id: 'advanced-tables-quick-save');
         }
+
+        // No active view — open modal to name it
+        $this->saveViewName      = '';
+        $this->saveViewFavorite  = false;
+        $this->saveViewPublic    = false;
+        $this->showSaveViewModal = true;
+    }
+
+    public function confirmSaveView(): void
+    {
+        $this->validate(['saveViewName' => 'required|string|max:255']);
+
+        $view = UserView::create([
+            'user_id'     => Auth::id(),
+            'resource'    => static::class,
+            'name'        => $this->saveViewName,
+            'state'       => $this->captureTableState(),
+            'is_public'   => $this->saveViewPublic,
+            'is_favorite' => $this->saveViewFavorite,
+            'is_approved' => ! config('filament-advanced-tables.approval_required', false),
+        ]);
+
+        $this->activeUserViewId  = $view->id;
+        $this->showSaveViewModal = false;
+
+        $this->sendNotification('success', __('filament-advanced-tables::advanced-tables.view_saved'));
+    }
+
+    public function cancelSaveView(): void
+    {
+        $this->showSaveViewModal = false;
     }
 
     public function deleteUserView(int $viewId): void
@@ -198,11 +234,11 @@ trait HasAdvancedTables
                 $this->activeUserViewId = null;
             }
             $view->delete();
-            $this->notify('success', __('filament-advanced-tables::advanced-tables.view_deleted'));
+            $this->sendNotification('success', __('filament-advanced-tables::advanced-tables.view_deleted'));
         }
     }
 
-    public function toggleFavorite(int $viewId): void
+    public function toggleFavoriteView(int $viewId): void
     {
         $view = UserView::find($viewId);
 
@@ -211,123 +247,54 @@ trait HasAdvancedTables
         }
     }
 
-    // ─── Authorization Helpers ────────────────────────────────────────────────────
-
-    protected function canUseView(UserView $view): bool
+    public function setDefaultView(int $viewId): void
     {
-        return $view->user_id === Auth::id()
-            || $view->is_public
-            || $view->is_global_favorite;
-    }
+        // Clear existing defaults for this resource + user
+        UserView::where('resource', static::class)
+            ->where('user_id', Auth::id())
+            ->update(['is_default' => false]);
 
-    protected function canEditView(UserView $view): bool
-    {
-        return $view->user_id === Auth::id();
-    }
-
-    protected function canDeleteView(UserView $view): bool
-    {
-        if (Auth::user()?->can('deleteAny', UserView::class)) {
-            return true;
-        }
-
-        return $view->user_id === Auth::id();
-    }
-
-    // ─── Multi-Sort ───────────────────────────────────────────────────────────────
-
-    public function addSortColumn(string $column, string $direction = 'asc'): void
-    {
-        $this->multiSortColumns = array_filter(
-            $this->multiSortColumns,
-            fn ($c) => ! str_starts_with($c, $column . ':')
-        );
-
-        $this->multiSortColumns[] = "{$column}:{$direction}";
-    }
-
-    public function removeSortColumn(string $column): void
-    {
-        $this->multiSortColumns = array_values(array_filter(
-            $this->multiSortColumns,
-            fn ($c) => ! str_starts_with($c, $column . ':')
-        ));
-    }
-
-    public function clearMultiSort(): void
-    {
-        $this->multiSortColumns = [];
-    }
-
-    public function getMultiSortAsArray(): array
-    {
-        $result = [];
-
-        foreach ($this->multiSortColumns as $entry) {
-            [$col, $dir] = explode(':', $entry, 2);
-            $result[] = ['column' => $col, 'direction' => $dir];
-        }
-
-        return $result;
-    }
-
-    // ─── Advanced Search ──────────────────────────────────────────────────────────
-
-    public function applyAdvancedSearch(string $query, ?string $column = null, string $operator = 'contains'): void
-    {
-        $this->advancedSearchQuery = $query;
-        $this->advancedSearchColumn = $column;
-        $this->advancedSearchOperator = $operator;
-        $this->resetPage();
-    }
-
-    public function clearAdvancedSearch(): void
-    {
-        $this->advancedSearchQuery = '';
-        $this->advancedSearchColumn = null;
-        $this->advancedSearchOperator = 'contains';
-        $this->resetPage();
+        UserView::find($viewId)?->update(['is_default' => true]);
+        $this->sendNotification('success', __('filament-advanced-tables::advanced-tables.view_saved'));
     }
 
     // ─── Quick Filters ────────────────────────────────────────────────────────────
 
     /**
-     * Define quick filter shortcuts.
+     * Override in your ListRecords page to define quick filter shortcuts.
      *
-     * @return array<array{label: string, filters: array<string, mixed>}>
+     * @return array<QuickFilter>
      */
     protected function getQuickFilters(): array
     {
         return [];
     }
 
+    /**
+     * Called when user clicks a quick filter button.
+     * Merges the quick filter's filter state on top of existing filters.
+     */
     public function applyQuickFilter(int $index): void
     {
-        $quickFilters = $this->getQuickFilters();
+        $filters = $this->getQuickFilters();
 
-        if (! isset($quickFilters[$index])) {
+        if (! isset($filters[$index])) {
             return;
         }
 
-        $this->tableFilters = array_merge(
-            $this->tableFilters ?? [],
-            $quickFilters[$index]['filters'] ?? []
-        );
+        $quickFilter = $filters[$index];
+        $filterData  = ($quickFilter instanceof QuickFilter) ? $quickFilter->filters : ($quickFilter['filters'] ?? []);
+
+        foreach ($filterData as $filterName => $filterState) {
+            $this->setTableFilterState($filterName, $filterState);
+        }
 
         $this->resetPage();
     }
 
-    // ─── Advanced Filter Builder ──────────────────────────────────────────────────
-
-    public function applyAdvancedFilters(array $filters): void
+    public function clearQuickFilters(): void
     {
-        $this->advancedFilterValues = $filters;
-        $this->resetPage();
-    }
-
-    public function clearAdvancedFilters(): void
-    {
-        $this->advancedFilterValues = [];
+        $this->resetTableFiltersForm();
         $this->resetPage();
     }
 
@@ -374,9 +341,72 @@ trait HasAdvancedTables
         $this->showFavoritesBar = ! $this->showFavoritesBar;
     }
 
-    // ─── Helper ───────────────────────────────────────────────────────────────────
+    // ─── Authorization ────────────────────────────────────────────────────────────
 
-    protected function notify(string $type, string $message): void
+    protected function canUseView(UserView $view): bool
+    {
+        return $view->user_id === Auth::id()
+            || $view->is_public
+            || $view->is_global_favorite;
+    }
+
+    protected function canEditView(UserView $view): bool
+    {
+        return $view->user_id === Auth::id();
+    }
+
+    protected function canDeleteView(UserView $view): bool
+    {
+        if (Auth::user()?->can('deleteAny', UserView::class)) {
+            return true;
+        }
+
+        return $view->user_id === Auth::id();
+    }
+
+    // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+    /**
+     * Capture the current table state using Filament 3's public API.
+     */
+    protected function captureTableState(): array
+    {
+        $table = $this->getTable();
+
+        return [
+            'filters'         => $this->getTableFilterState() ?? [],
+            'sort_column'     => $table->getSortColumn(),
+            'sort_direction'  => $table->getSortDirection(),
+            'toggled_columns' => $this->getToggledTableColumns() ?? [],
+            'search'          => $this->getTableSearch() ?? '',
+        ];
+    }
+
+    /**
+     * Get current filter state across all filters.
+     */
+    protected function getTableFilterState(): array
+    {
+        try {
+            $state = [];
+            foreach ($this->getTable()->getFilters() as $filter) {
+                $filterState = $this->getFilterState($filter->getName());
+                if (! empty($filterState)) {
+                    $state[$filter->getName()] = $filterState;
+                }
+            }
+            return $state;
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    protected function getTableSearch(): string
+    {
+        return $this->tableSearch ?? '';
+    }
+
+    protected function sendNotification(string $type, string $message): void
     {
         \Filament\Notifications\Notification::make()
             ->title($message)

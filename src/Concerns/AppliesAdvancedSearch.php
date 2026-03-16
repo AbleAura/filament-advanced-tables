@@ -4,14 +4,34 @@ namespace Ableaura\FilamentAdvancedTables\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 
+/**
+ * Add to your ListRecords page alongside HasAdvancedTables.
+ *
+ * Define which columns are searchable by overriding getAdvancedSearchColumns():
+ *
+ *   protected function getAdvancedSearchColumns(): array
+ *   {
+ *       return ['name', 'email', 'phone'];
+ *   }
+ */
 trait AppliesAdvancedSearch
 {
+    public function bootAppliesAdvancedSearch(): void
+    {
+        $this->modifyTableQueryUsing(function (Builder $query) {
+            return $this->applyAdvancedSearchToQuery($query, $this->getAdvancedSearchColumns());
+        });
+    }
+
     /**
-     * Apply advanced search to the Eloquent query.
-     * Call inside getTableQuery() or modifyTableQueryUsing().
-     *
-     * @param array<string> $searchableColumns Column names to search across when no specific column is chosen.
+     * Override in your ListRecords page to define searchable columns.
+     * @return array<string>
      */
+    protected function getAdvancedSearchColumns(): array
+    {
+        return [];
+    }
+
     public function applyAdvancedSearchToQuery(Builder $query, array $searchableColumns = []): Builder
     {
         $searchQuery = $this->advancedSearchQuery ?? '';
@@ -23,12 +43,10 @@ trait AppliesAdvancedSearch
         $column   = $this->advancedSearchColumn ?? null;
         $operator = $this->advancedSearchOperator ?? 'contains';
 
-        // If a specific column is selected, search only that column.
         if ($column) {
             return $this->applySearchOperator($query, $column, $operator, $searchQuery);
         }
 
-        // Otherwise, search across all searchable columns with OR logic.
         if (empty($searchableColumns)) {
             return $query;
         }
@@ -45,12 +63,11 @@ trait AppliesAdvancedSearch
     private function applySearchOperator(Builder $query, string $column, string $operator, string $value): Builder
     {
         return match ($operator) {
-            'contains'     => $query->where($column, 'like', "%{$value}%"),
             'not_contains' => $query->where($column, 'not like', "%{$value}%"),
             'starts_with'  => $query->where($column, 'like', "{$value}%"),
             'ends_with'    => $query->where($column, 'like', "%{$value}"),
             'equals'       => $query->where($column, '=', $value),
-            default        => $query->where($column, 'like', "%{$value}%"),
+            default        => $query->where($column, 'like', "%{$value}%"), // contains
         };
     }
 }

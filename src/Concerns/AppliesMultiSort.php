@@ -4,21 +4,28 @@ namespace Ableaura\FilamentAdvancedTables\Concerns;
 
 use Illuminate\Database\Eloquent\Builder;
 
+/**
+ * Add to your ListRecords page alongside HasAdvancedTables.
+ *
+ * Option A — automatic (recommended): just use the trait, it hooks in via bootAppliesMultiSort()
+ * Option B — manual: call $this->applyMultiSortToQuery($query) inside modifyTableQueryUsing()
+ */
 trait AppliesMultiSort
 {
-    /**
-     * Apply multi-sort columns to the Eloquent query.
-     *
-     * Call this inside getTableQuery() or modifyTableQueryUsing():
-     *
-     *   protected function getTableQuery(): Builder
-     *   {
-     *       return parent::getTableQuery()->tap(fn ($q) => $this->applyMultiSortToQuery($q));
-     *   }
-     */
+    public function bootAppliesMultiSort(): void
+    {
+        // Filament 3: hook into the table query automatically
+        $this->modifyTableQueryUsing(function (Builder $query) {
+            return $this->applyMultiSortToQuery($query);
+        });
+    }
+
     public function applyMultiSortToQuery(Builder $query): Builder
     {
         foreach ($this->multiSortColumns ?? [] as $entry) {
+            if (! str_contains($entry, ':')) {
+                continue;
+            }
             [$column, $direction] = explode(':', $entry, 2);
             $query->orderBy($column, $direction);
         }

@@ -4,27 +4,29 @@ namespace Ableaura\FilamentAdvancedTables;
 
 use Filament\Contracts\Plugin;
 use Filament\Panel;
+use Filament\View\PanelsRenderHook;
+use Illuminate\Support\Facades\Blade;
 
 class FilamentAdvancedTablesPlugin implements Plugin
 {
-    protected bool $hasUserViews = true;
-    protected bool $hasPresetViews = true;
-    protected bool $hasFavoritesBar = true;
-    protected bool $hasQuickSave = true;
-    protected bool $hasViewManager = true;
+    protected bool $hasUserViews         = true;
+    protected bool $hasPresetViews       = true;
+    protected bool $hasFavoritesBar      = true;
+    protected bool $hasQuickSave         = true;
+    protected bool $hasViewManager       = true;
     protected bool $hasManagedDefaultViews = true;
-    protected bool $hasMultiSort = true;
-    protected bool $hasQuickFilters = true;
-    protected bool $hasAdvancedSearch = true;
+    protected bool $hasMultiSort         = true;
+    protected bool $hasQuickFilters      = true;
+    protected bool $hasAdvancedSearch    = true;
     protected bool $hasAdvancedFilterBuilder = true;
-    protected bool $hasUserViewsResource = true;
-    protected bool $hasLoadingSkeleton = true;
+    protected bool $hasUserViewsResource = false;  // opt-in — adds a nav item
+    protected bool $hasLoadingSkeleton   = true;
 
-    protected string $theme = 'filament'; // filament | github | links | links-simple | tabs | tabs-simple
-    protected ?string $userModel = null;
-    protected string $authGuard = 'web';
-    protected bool $approvalRequired = false;
-    protected bool $allowPublicViews = true;
+    protected string $theme        = 'filament';
+    protected ?string $userModel   = null;
+    protected string $authGuard    = 'web';
+    protected bool $approvalRequired  = false;
+    protected bool $allowPublicViews  = true;
 
     public static function make(): static
     {
@@ -52,7 +54,15 @@ class FilamentAdvancedTablesPlugin implements Plugin
 
     public function boot(Panel $panel): void
     {
-        //
+        // Inject the favorites bar above the table on all list-record pages.
+        // The blade component checks whether the current page uses HasAdvancedTables
+        // and silently renders nothing if not.
+        if ($this->hasFavoritesBar) {
+            $panel->renderHook(
+                PanelsRenderHook::RESOURCE_PAGES_LIST_RECORDS_TABLE_BEFORE,
+                fn (): string => Blade::render('<x-filament-advanced-tables::favorites-bar-hook />')
+            );
+        }
     }
 
     // ─── Fluent Setters ──────────────────────────────────────────────────────────
@@ -161,21 +171,21 @@ class FilamentAdvancedTablesPlugin implements Plugin
 
     // ─── Getters ─────────────────────────────────────────────────────────────────
 
-    public function hasUserViews(): bool { return $this->hasUserViews; }
-    public function hasPresetViews(): bool { return $this->hasPresetViews; }
-    public function hasFavoritesBar(): bool { return $this->hasFavoritesBar; }
-    public function hasQuickSave(): bool { return $this->hasQuickSave; }
-    public function hasViewManager(): bool { return $this->hasViewManager; }
-    public function hasManagedDefaultViews(): bool { return $this->hasManagedDefaultViews; }
-    public function hasMultiSort(): bool { return $this->hasMultiSort; }
-    public function hasQuickFilters(): bool { return $this->hasQuickFilters; }
-    public function hasAdvancedSearch(): bool { return $this->hasAdvancedSearch; }
-    public function hasAdvancedFilterBuilder(): bool { return $this->hasAdvancedFilterBuilder; }
-    public function hasUserViewsResource(): bool { return $this->hasUserViewsResource; }
-    public function hasLoadingSkeleton(): bool { return $this->hasLoadingSkeleton; }
-    public function getTheme(): string { return $this->theme; }
-    public function getUserModel(): string { return $this->userModel ?? config('auth.providers.users.model', \App\Models\User::class); }
-    public function getAuthGuard(): string { return $this->authGuard; }
-    public function isApprovalRequired(): bool { return $this->approvalRequired; }
-    public function allowsPublicViews(): bool { return $this->allowPublicViews; }
+    public function hasUserViews(): bool              { return $this->hasUserViews; }
+    public function hasPresetViews(): bool            { return $this->hasPresetViews; }
+    public function hasFavoritesBar(): bool           { return $this->hasFavoritesBar; }
+    public function hasQuickSave(): bool              { return $this->hasQuickSave; }
+    public function hasViewManager(): bool            { return $this->hasViewManager; }
+    public function hasManagedDefaultViews(): bool    { return $this->hasManagedDefaultViews; }
+    public function hasMultiSort(): bool              { return $this->hasMultiSort; }
+    public function hasQuickFilters(): bool           { return $this->hasQuickFilters; }
+    public function hasAdvancedSearch(): bool         { return $this->hasAdvancedSearch; }
+    public function hasAdvancedFilterBuilder(): bool  { return $this->hasAdvancedFilterBuilder; }
+    public function hasUserViewsResource(): bool      { return $this->hasUserViewsResource; }
+    public function hasLoadingSkeleton(): bool        { return $this->hasLoadingSkeleton; }
+    public function getTheme(): string                { return $this->theme; }
+    public function getUserModel(): string            { return $this->userModel ?? config('auth.providers.users.model', \App\Models\User::class); }
+    public function getAuthGuard(): string            { return $this->authGuard; }
+    public function isApprovalRequired(): bool        { return $this->approvalRequired; }
+    public function allowsPublicViews(): bool         { return $this->allowPublicViews; }
 }

@@ -11,6 +11,7 @@ use Ableaura\FilamentAdvancedTables\Http\Livewire\MultiSort;
 use Ableaura\FilamentAdvancedTables\Http\Livewire\QuickFilters;
 use Ableaura\FilamentAdvancedTables\Http\Livewire\QuickSave;
 use Ableaura\FilamentAdvancedTables\Http\Livewire\ViewManager;
+use Illuminate\Support\Facades\Blade;
 use Livewire\Livewire;
 use Spatie\LaravelPackageTools\Package;
 use Spatie\LaravelPackageTools\PackageServiceProvider;
@@ -40,13 +41,20 @@ class FilamentAdvancedTablesServiceProvider extends PackageServiceProvider
 
     public function packageBooted(): void
     {
-        // Register Livewire components under the plugin namespace
-        Livewire::component('filament-advanced-tables::favorites-bar',       FavoritesBar::class);
-        Livewire::component('filament-advanced-tables::view-manager',        ViewManager::class);
-        Livewire::component('filament-advanced-tables::multi-sort',          MultiSort::class);
-        Livewire::component('filament-advanced-tables::advanced-search',     AdvancedSearch::class);
-        Livewire::component('filament-advanced-tables::quick-filters',       QuickFilters::class);
-        Livewire::component('filament-advanced-tables::quick-save',         QuickSave::class);
+        // Register Livewire components
+        Livewire::component('filament-advanced-tables::favorites-bar',           FavoritesBar::class);
+        Livewire::component('filament-advanced-tables::view-manager',            ViewManager::class);
+        Livewire::component('filament-advanced-tables::multi-sort',              MultiSort::class);
+        Livewire::component('filament-advanced-tables::advanced-search',         AdvancedSearch::class);
+        Livewire::component('filament-advanced-tables::quick-filters',           QuickFilters::class);
+        Livewire::component('filament-advanced-tables::quick-save',              QuickSave::class);
         Livewire::component('filament-advanced-tables::advanced-filter-builder', AdvancedFilterBuilder::class);
+
+        // Register Blade components under the filament-advanced-tables namespace
+        // <x-filament-advanced-tables::favorites-bar-hook />
+        Blade::componentNamespace(
+            'Ableaura\\FilamentAdvancedTables\\View\\Components',
+            'filament-advanced-tables'
+        );
     }
 }
