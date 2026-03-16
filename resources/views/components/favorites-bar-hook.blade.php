@@ -1,14 +1,9 @@
 {{--
-    Injected via PanelsRenderHook::RESOURCE_PAGES_LIST_RECORDS_TABLE_BEFORE.
-    Silently renders nothing if the current page does not use HasAdvancedTables.
+    Rendered via PanelsRenderHook::RESOURCE_PAGES_LIST_RECORDS_TABLE_BEFORE.
+    $livewire is passed explicitly from the plugin's boot() closure.
+    Only rendered on pages that use HasAdvancedTables.
 --}}
-@php
-    $livewire  = $__livewire ?? null;
-    $usesTrait = $livewire && collect(class_uses_recursive($livewire))
-        ->contains(\Ableaura\FilamentAdvancedTables\Concerns\HasAdvancedTables::class);
-@endphp
-
-@if ($usesTrait && ($livewire->showFavoritesBar ?? false))
+@if ($livewire->showFavoritesBar ?? false)
 
     <div class="filament-advanced-tables-bar w-full border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-gray-900/40">
         <div class="flex flex-wrap items-center gap-1.5 px-4 py-2">
@@ -49,14 +44,16 @@
                     @if ($preset->badge)
                         <span @class([
                             'ml-0.5 px-1.5 py-0.5 rounded text-[10px] font-semibold',
-                            'bg-white/20 text-white' => $livewire->activePresetViewKey === $preset->key,
-                            'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' => $livewire->activePresetViewKey !== $preset->key,
+                            'bg-white/20 text-white'
+                                => $livewire->activePresetViewKey === $preset->key,
+                            'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300'
+                                => $livewire->activePresetViewKey !== $preset->key,
                         ])>{{ $preset->badge }}</span>
                     @endif
                 </button>
             @endforeach
 
-            {{-- Divider --}}
+            {{-- Divider between presets and user favorites --}}
             @if ($livewire->getPresetViewsCollection()->isNotEmpty() && $livewire->getFavoriteViews()->isNotEmpty())
                 <div class="h-4 w-px bg-gray-300 dark:bg-white/10 mx-1"></div>
             @endif
@@ -68,7 +65,8 @@
                     type="button"
                     @class([
                         'inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-colors',
-                        'bg-primary-600 text-white shadow-sm' => $livewire->activeUserViewId === $view->id,
+                        'bg-primary-600 text-white shadow-sm'
+                            => $livewire->activeUserViewId === $view->id,
                         'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-white/10 hover:bg-gray-100 dark:hover:bg-gray-700'
                             => $livewire->activeUserViewId !== $view->id,
                     ])
@@ -85,28 +83,27 @@
                 </button>
             @endforeach
 
-            {{-- Right-side spacer --}}
             <div class="flex-1"></div>
 
             {{-- Quick Filter buttons --}}
             @foreach ($livewire->getQuickFilters() as $index => $qf)
                 @php
-                    $label = $qf instanceof \Ableaura\FilamentAdvancedTables\Support\QuickFilter ? $qf->label : ($qf['label'] ?? '');
-                    $icon  = $qf instanceof \Ableaura\FilamentAdvancedTables\Support\QuickFilter ? $qf->icon  : ($qf['icon']  ?? null);
+                    $qfLabel = $qf instanceof \Ableaura\FilamentAdvancedTables\Support\QuickFilter ? $qf->label : ($qf['label'] ?? '');
+                    $qfIcon  = $qf instanceof \Ableaura\FilamentAdvancedTables\Support\QuickFilter ? $qf->icon  : ($qf['icon']  ?? null);
                 @endphp
                 <button
                     wire:click="applyQuickFilter({{ $index }})"
                     type="button"
                     class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-white dark:bg-gray-800 border border-gray-300 dark:border-white/10 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
-                    @if ($icon)
-                        <x-dynamic-component :component="$icon" class="w-3.5 h-3.5" />
+                    @if ($qfIcon)
+                        <x-dynamic-component :component="$qfIcon" class="w-3.5 h-3.5" />
                     @endif
-                    {{ $label }}
+                    {{ $qfLabel }}
                 </button>
             @endforeach
 
-            {{-- Quick Save --}}
+            {{-- Quick Save button --}}
             <button
                 wire:click="quickSaveCurrentView"
                 type="button"
@@ -117,7 +114,7 @@
                 Save View
             </button>
 
-            {{-- View Manager --}}
+            {{-- View Manager button --}}
             <button
                 x-on:click="$dispatch('open-modal', { id: 'advanced-tables-view-manager' })"
                 type="button"
@@ -211,7 +208,8 @@
                                 class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700">
                                 <x-heroicon-o-home class="w-4 h-4 {{ $view->is_default ? 'text-primary-500' : 'text-gray-400' }}" />
                             </button>
-                            <button wire:click="deleteUserView({{ $view->id }})" wire:confirm="Delete this view?"
+                            <button wire:click="deleteUserView({{ $view->id }})"
+                                wire:confirm="Delete this view?"
                                 type="button" title="Delete"
                                 class="p-1 rounded hover:bg-danger-50 dark:hover:bg-danger-900/20 text-gray-400 hover:text-danger-500">
                                 <x-heroicon-o-trash class="w-4 h-4" />
